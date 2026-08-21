@@ -11,8 +11,10 @@ from langchain_tavily import TavilySearch
 load_dotenv()
 
 
-def require_env(name: str) -> str:
+def require_env(name: str, legacy_name: str | None = None) -> str:
     value = os.getenv(name)
+    if not value and legacy_name:
+        value = os.getenv(legacy_name)
     if not value:
         raise RuntimeError(
             f"Missing required environment variable: {name}. "
@@ -22,7 +24,7 @@ def require_env(name: str) -> str:
 
 
 def build_agent():
-    google_api_key = require_env("GEMINI_API")
+    google_api_key = require_env("Gemini_API_Keyy")
     tavily_api_key = require_env("TAVILY_API_KEY")
     rapid_api_key = require_env("RAPID_API_KEY")
 
@@ -95,32 +97,6 @@ Present results in a clean, readable format with clear sections and proper spaci
     return agent
 
 
-def extract_text(content):
-    if isinstance(content, str):
-        return content
-
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict):
-                text_value = item.get("text") or item.get("content")
-                if text_value:
-                    parts.append(str(text_value))
-            else:
-                parts.append(str(item))
-        return "\n".join(parts)
-
-    if isinstance(content, dict):
-        text_value = content.get("text") or content.get("content")
-        if text_value:
-            return str(text_value)
-        return str(content)
-
-    return str(content)
-
-
 def main() -> None:
     user_query = (
         "What's the demand for generative ai in the industry and show me related job openings in India"
@@ -130,7 +106,13 @@ def main() -> None:
     response = agent.invoke({"messages": [{"role": "user", "content": user_query}]})
 
     last_message = response["messages"][-1]
-    text = extract_text(last_message.content)
+    content = last_message.content
+
+    if isinstance(content, list):
+        text = content[0].get("text", "") if content else ""
+    else:
+        text = str(content)
+
     print(text)
 
 

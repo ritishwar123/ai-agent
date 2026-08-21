@@ -11,8 +11,10 @@ from langchain_tavily import TavilySearch
 load_dotenv()
 
 
-def require_env(name: str) -> str:
+def require_env(name: str, legacy_name: str | None = None) -> str:
     value = os.getenv(name)
+    if not value and legacy_name:
+        value = os.getenv(legacy_name)
     if not value:
         raise RuntimeError(
             f"Missing required environment variable: {name}. "
@@ -22,7 +24,7 @@ def require_env(name: str) -> str:
 
 
 def build_agent():
-    google_api_key = require_env("GEMINI_API")
+    google_api_key = require_env("Gemini_API_Keyy")
     tavily_api_key = require_env("TAVILY_API_KEY")
     rapid_api_key = require_env("RAPID_API_KEY")
 
