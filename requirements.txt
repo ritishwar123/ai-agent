@@ -3,3 +3,4 @@ langchain-google-genai
 langchain-tavily
 requests
 python-dotenv
+streamlit
