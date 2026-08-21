@@ -89,6 +89,32 @@ Present results in a clean, readable format with clear sections and proper spaci
     )
 
 
+def extract_text(content):
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_value = item.get("text") or item.get("content")
+                if text_value:
+                    parts.append(str(text_value))
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+
+    if isinstance(content, dict):
+        text_value = content.get("text") or content.get("content")
+        if text_value:
+            return str(text_value)
+        return str(content)
+
+    return str(content)
+
+
 st.set_page_config(page_title="Skill-to-Career Mapping", page_icon="🎯")
 
 st.title("Skill-to-Career Mapping")
@@ -105,8 +131,7 @@ if st.button("Search"):
         with st.spinner("Researching skill demand and job openings..."):
             response = agent.invoke({"messages": [{"role": "user", "content": user_query}]})
             last_message = response["messages"][-1]
-            content = last_message.content
-            text = content[0].get("text", "") if isinstance(content, list) and content else str(content)
+            text = extract_text(last_message.content)
         st.text_area("Result", value=text, height=500)
     except Exception as exc:
         st.error(f"Something went wrong: {exc}")
