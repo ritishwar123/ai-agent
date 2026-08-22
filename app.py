@@ -44,7 +44,7 @@ def build_agent():
     @tool
     def search_jobs(skill: str, location: str) -> list:
         """Search for jobs requiring a specific skill using JSearch API from RapidAPI."""
-        url = "https://jsearch.p.rapidapi.com/search-v2"
+        url = "https://jsearch.p.rapidapi.com/search"
         headers = {
             "x-rapidapi-key": rapid_api_key,
             "x-rapidapi-host": "jsearch.p.rapidapi.com",
@@ -54,8 +54,7 @@ def build_agent():
             "query": f"{skill} in {location}",
             "page": "1",
             "country": "in",
-            "employment_types": "INTERN,FULLTIME",
-            "job_requirements": "no_experience,under_3_years_experience",
+            "num_pages": "1",
         }
 
         response = requests.get(url, headers=headers, params=querystring, timeout=30)
@@ -142,18 +141,18 @@ if st.button("Search"):
             )
             last_message = response["messages"][-1]
             text = extract_text(last_message.content)
-        st.text_area("Research summary", value=text, height=500)
-        st.subheader("Job openings")
+        st.markdown(text)
         if job_results:
+            link_lines = ["**Apply for jobs:**"]
             for job in job_results:
                 title = job.get("title") or "Untitled role"
                 company = job.get("company") or "Company not listed"
                 location = job.get("location") or "Location not listed"
                 apply_link = job.get("apply_link")
-                st.markdown(f"**{title}**  \n{company} | {location}")
                 if apply_link:
-                    st.link_button("Open job listing", apply_link)
-        else:
-            st.info("RapidAPI did not return any job listings for this search.")
+                    link_lines.append(
+                        f"- [{title} - {company} ({location})]({apply_link})"
+                    )
+            st.markdown("\n".join(link_lines))
     except Exception as exc:
         st.error(f"Something went wrong: {exc}")
