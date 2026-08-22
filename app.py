@@ -45,7 +45,7 @@ def build_agent(checkpointer: InMemorySaver):
     def search_jobs(skill: str, location: str) -> list:
         """Search for jobs requiring a specific skill using JSearch API from RapidAPI."""
         response = requests.get(
-            "https://jsearch.p.rapidapi.com/search",
+            "https://jsearch.p.rapidapi.com/search-v2",
             headers={
                 "x-rapidapi-key": rapid_api_key,
                 "x-rapidapi-host": "jsearch.p.rapidapi.com",
