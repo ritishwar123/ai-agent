@@ -27,6 +27,7 @@ def build_agent():
     google_api_key = require_env("Gemini_API_Keyy")
     tavily_api_key = require_env("TAVILY_API_KEY")
     rapid_api_key = require_env("RAPID_API_KEY")
+    job_results = []
 
     model = init_chat_model(
         "google_genai:gemini-2.5-flash",
@@ -74,6 +75,7 @@ def build_agent():
                     "apply_link": job.get("job_apply_link"),
                 }
             )
+        job_results.extend(result)
         return result
 
     system_prompt = """You are a Skill-to-Career Mapping assistant that helps students understand skill demand and find matching job opportunities.
@@ -86,11 +88,12 @@ Help the student by researching the skill they ask about and finding relevant op
 
 Present results in a clean, readable format with clear sections and proper spacing. Include all job details with apply links. Don't use markdown format."""
 
-    return create_agent(
+    agent = create_agent(
         model=model,
         tools=[skill_demand_tool, search_jobs],
         system_prompt=system_prompt,
     )
+    return agent, job_results
 
 
 def extract_text(content):
@@ -131,7 +134,7 @@ user_query = st.text_input(
 
 if st.button("Search"):
     try:
-        agent = build_agent()
+        agent, job_results = build_agent()
         with st.spinner("Researching skill demand and job openings..."):
             response = agent.invoke(
                 {"messages": [{"role": "user", "content": user_query}]},
@@ -139,6 +142,18 @@ if st.button("Search"):
             )
             last_message = response["messages"][-1]
             text = extract_text(last_message.content)
-        st.text_area("Result", value=text, height=500)
+        st.text_area("Research summary", value=text, height=500)
+        st.subheader("Job openings")
+        if job_results:
+            for job in job_results:
+                title = job.get("title") or "Untitled role"
+                company = job.get("company") or "Company not listed"
+                location = job.get("location") or "Location not listed"
+                apply_link = job.get("apply_link")
+                st.markdown(f"**{title}**  \n{company} | {location}")
+                if apply_link:
+                    st.link_button("Open job listing", apply_link)
+        else:
+            st.info("RapidAPI did not return any job listings for this search.")
     except Exception as exc:
         st.error(f"Something went wrong: {exc}")
