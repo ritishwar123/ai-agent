@@ -79,7 +79,7 @@ def build_agent(checkpointer: InMemorySaver):
 
     system_prompt = """You are a Skill-to-Career Mapping assistant that helps students understand skills, companies, and career opportunities.
 
-Use skill_demand_tool for current industry research and search_jobs when the user asks for job openings or application links. Explain answers clearly and include all useful details returned by the tools. Use each tool at most once per user request. Do not claim that no jobs were found if search_jobs returned results."""
+Use skill_demand_tool for current industry research and search_jobs when the user asks for job openings or application links. Use each tool at most once per user request. Format research answers with Markdown headings such as Market Drivers, Market Growth and Predictions, Key End Users, and Challenges. Do not include a job-listings section or application links; the application adds verified RapidAPI links after your answer. Do not claim that no jobs were found."""
 
     agent = create_agent(
         model=model,
@@ -104,6 +104,29 @@ def extract_text(content) -> str:
                     parts.append(str(text_value))
         return "\n".join(parts)
     return str(content)
+
+
+def format_job_links(jobs) -> str:
+    lines = ["## Related Job Openings in India", ""]
+    listing_number = 1
+    for job in jobs:
+        apply_link = job.get("apply_link")
+        if not apply_link:
+            continue
+        title = job.get("title") or "Untitled role"
+        company = job.get("company") or "Unspecified"
+        location = job.get("location") or "Not specified"
+        lines.extend(
+            [
+                f"{listing_number}. **Title:** {title}",
+                f"   **Company:** {company}",
+                f"   **Location:** {location}",
+                f"   **Apply Link:** [{apply_link}]({apply_link})",
+                "",
+            ]
+        )
+        listing_number += 1
+    return "\n".join(lines) if listing_number > 1 else ""
 
 
 st.set_page_config(page_title="Skill-to-Career Mapping", page_icon="🎯")
@@ -137,12 +160,7 @@ if st.button("Search"):
             )
             text = extract_text(response["messages"][-1].content)
 
-        st.markdown(text)
-        for job in st.session_state.job_results:
-            apply_link = job.get("apply_link")
-            if apply_link:
-                title = job.get("title") or "Job listing"
-                company = job.get("company") or "Company not listed"
-                st.markdown(f"[{title} - {company}]({apply_link})")
+        job_links = format_job_links(st.session_state.job_results)
+        st.markdown(f"{text}\n\n{job_links}" if job_links else text)
     except Exception as exc:
         st.error(f"Something went wrong: {exc}")
