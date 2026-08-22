@@ -64,6 +64,8 @@ def build_agent():
 
         result = []
         for job in jobs:
+            if not isinstance(job, dict):
+                continue
             result.append(
                 {
                     "title": job.get("job_title"),
@@ -80,7 +82,7 @@ You have access to these tools:
 - skill_demand_tool: Search for industry demand, salary insights, and career trends
 - search_jobs: Find actual job listings requiring specific skills
 
-Help the student by researching the skill they ask about and finding relevant opportunities.
+Help the student by researching the skill they ask about and finding relevant opportunities. Use each tool at most once, then provide the answer.
 
 Present results in a clean, readable format with clear sections and proper spacing. Include all job details with apply links. Don't use markdown format."""
 
@@ -131,7 +133,10 @@ if st.button("Search"):
     try:
         agent = build_agent()
         with st.spinner("Researching skill demand and job openings..."):
-            response = agent.invoke({"messages": [{"role": "user", "content": user_query}]})
+            response = agent.invoke(
+                {"messages": [{"role": "user", "content": user_query}]},
+                config={"recursion_limit": 8},
+            )
             last_message = response["messages"][-1]
             text = extract_text(last_message.content)
         st.text_area("Result", value=text, height=500)
