@@ -1,4 +1,5 @@
 import os
+import uuid
 
 import requests
 import streamlit as st
@@ -7,14 +8,13 @@ from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langchain.tools import tool
 from langchain_tavily import TavilySearch
+from langgraph.checkpoint.memory import InMemorySaver
 
 load_dotenv()
 
 
-def require_env(name: str, legacy_name: str | None = None) -> str:
+def require_env(name: str) -> str:
     value = os.getenv(name)
-    if not value and legacy_name:
-        value = os.getenv(legacy_name)
     if not value:
         raise RuntimeError(
             f"Missing required environment variable: {name}. "
@@ -23,7 +23,7 @@ def require_env(name: str, legacy_name: str | None = None) -> str:
     return value
 
 
-def build_agent():
+def build_agent(checkpointer: InMemorySaver):
     google_api_key = require_env("Gemini_API_Keyy")
     tavily_api_key = require_env("TAVILY_API_KEY")
     rapid_api_key = require_env("RAPID_API_KEY")
@@ -44,23 +44,23 @@ def build_agent():
     @tool
     def search_jobs(skill: str, location: str) -> list:
         """Search for jobs requiring a specific skill using JSearch API from RapidAPI."""
-        url = "https://jsearch.p.rapidapi.com/search"
-        headers = {
-            "x-rapidapi-key": rapid_api_key,
-            "x-rapidapi-host": "jsearch.p.rapidapi.com",
-            "Content-Type": "application/json",
-        }
-        querystring = {
-            "query": f"{skill} in {location}",
-            "page": "1",
-            "country": "in",
-            "num_pages": "1",
-        }
-
-        response = requests.get(url, headers=headers, params=querystring, timeout=30)
+        response = requests.get(
+            "https://jsearch.p.rapidapi.com/search",
+            headers={
+                "x-rapidapi-key": rapid_api_key,
+                "x-rapidapi-host": "jsearch.p.rapidapi.com",
+            },
+            params={
+                "query": f"{skill} in {location}",
+                "page": "1",
+                "country": "in",
+                "num_pages": "1",
+            },
+            timeout=30,
+        )
         response.raise_for_status()
         data = response.json()
-        jobs = data.get("data", []) or []
+        jobs = data.get("data", []) if isinstance(data, dict) else []
 
         result = []
         for job in jobs:
@@ -77,28 +77,22 @@ def build_agent():
         job_results.extend(result)
         return result
 
-    system_prompt = """You are a Skill-to-Career Mapping assistant that helps students understand skill demand and find matching job opportunities.
+    system_prompt = """You are a Skill-to-Career Mapping assistant that helps students understand skills, companies, and career opportunities.
 
-You have access to these tools:
-- skill_demand_tool: Search for industry demand, salary insights, and career trends
-- search_jobs: Find actual job listings requiring specific skills
-
-Help the student by researching the skill they ask about and finding relevant opportunities. Use each tool at most once, then provide the answer.
-
-Present results in a clean, readable format with clear sections and proper spacing. Include all job details with apply links. Don't use markdown format."""
+Use skill_demand_tool for current industry research and search_jobs when the user asks for job openings or application links. Explain answers clearly and include all useful details returned by the tools. Use each tool at most once per user request. Do not claim that no jobs were found if search_jobs returned results."""
 
     agent = create_agent(
         model=model,
         tools=[skill_demand_tool, search_jobs],
         system_prompt=system_prompt,
+        checkpointer=checkpointer,
     )
     return agent, job_results
 
 
-def extract_text(content):
+def extract_text(content) -> str:
     if isinstance(content, str):
         return content
-
     if isinstance(content, list):
         parts = []
         for item in content:
@@ -108,51 +102,47 @@ def extract_text(content):
                 text_value = item.get("text") or item.get("content")
                 if text_value:
                     parts.append(str(text_value))
-            else:
-                parts.append(str(item))
         return "\n".join(parts)
-
-    if isinstance(content, dict):
-        text_value = content.get("text") or content.get("content")
-        if text_value:
-            return str(text_value)
-        return str(content)
-
     return str(content)
 
 
 st.set_page_config(page_title="Skill-to-Career Mapping", page_icon="🎯")
-
 st.title("Skill-to-Career Mapping")
-st.write("Research skill demand and find relevant job opportunities in India.")
+st.write("Research skills, companies, and relevant job opportunities in India.")
+
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
+if "checkpointer" not in st.session_state:
+    st.session_state.checkpointer = InMemorySaver()
+if "agent" not in st.session_state:
+    st.session_state.agent, st.session_state.job_results = build_agent(
+        st.session_state.checkpointer
+    )
 
 user_query = st.text_input(
-    "Ask about a skill or role",
-    value="What's the demand for generative ai in the industry and show me related job openings in India",
+    "Ask about a skill, company, or role",
+    value="Can you explain in detail about the Accenture company",
 )
 
 if st.button("Search"):
     try:
-        agent, job_results = build_agent()
-        with st.spinner("Researching skill demand and job openings..."):
-            response = agent.invoke(
+        st.session_state.job_results.clear()
+        with st.spinner("Researching..."):
+            response = st.session_state.agent.invoke(
                 {"messages": [{"role": "user", "content": user_query}]},
-                config={"recursion_limit": 8},
+                config={
+                    "configurable": {"thread_id": st.session_state.thread_id},
+                    "recursion_limit": 8,
+                },
             )
-            last_message = response["messages"][-1]
-            text = extract_text(last_message.content)
+            text = extract_text(response["messages"][-1].content)
+
         st.markdown(text)
-        if job_results:
-            link_lines = ["**Apply for jobs:**"]
-            for job in job_results:
-                title = job.get("title") or "Untitled role"
+        for job in st.session_state.job_results:
+            apply_link = job.get("apply_link")
+            if apply_link:
+                title = job.get("title") or "Job listing"
                 company = job.get("company") or "Company not listed"
-                location = job.get("location") or "Location not listed"
-                apply_link = job.get("apply_link")
-                if apply_link:
-                    link_lines.append(
-                        f"- [{title} - {company} ({location})]({apply_link})"
-                    )
-            st.markdown("\n".join(link_lines))
+                st.markdown(f"[{title} - {company}]({apply_link})")
     except Exception as exc:
         st.error(f"Something went wrong: {exc}")

@@ -1,4 +1,5 @@
 langchain
+langgraph
 langchain-google-genai
 langchain-tavily
 requests
